@@ -10,12 +10,16 @@
 
 #define MAX_SOURCE_SIZE (0x1000000)
 
+
+
 int main(){
 	char info[1024];
 	cl_uint info_int;
+	cl_uint info_CU;
 	cl_ulong info_long;
 	cl_bool info_bool;
 	size_t info_size;
+
 	
 	
 
@@ -50,8 +54,8 @@ int main(){
 	printf("Device Name : %s\n", info);
 	clGetDeviceInfo(device, CL_DEVICE_VENDOR, sizeof(char)*1024, info, NULL);
 	printf("Device Vendor : %s\n", info);
-	clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(cl_uint), &info_int, NULL);
-	printf("Device CU num : %d\n", info_int);
+	clGetDeviceInfo(device, CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(cl_uint), &info_CU, NULL);
+	printf("Device CU num : %d\n", info_CU);
 	clGetDeviceInfo(device, CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(size_t), &info_size, NULL);
 	printf("Device WORK_GROUP_SIZE : %zu\n", info_size);
 	clGetDeviceInfo(device, CL_DEVICE_GLOBAL_MEM_SIZE, sizeof(cl_ulong), &info_long, NULL);
@@ -103,67 +107,73 @@ int main(){
 	kernel_vec_add = clCreateKernel(program, "vec_add", &err);
 
 	/* Create Buffer */
-	float *A, *B, *C;
+	int *A, *B, *C;
 	int i;
 
-	A = (float*)malloc(sizeof(float)*4*4);
-	B = (float*)malloc(sizeof(float)*4*4);
-	C = (float*)malloc(sizeof(float)*4*4);
+	A = (int*)malloc(sizeof(int)*16384);
+	B = (int*)malloc(sizeof(int)*16384);
+	C = (int*)malloc(sizeof(int)*16384);
 
-	for(i = 0; i < 16; i++ ){
-		A[i] = i + 1;
-		B[i] = i * 2;
+	for(i = 0; i < 16384; i++ ){
+		A[i] = 1;
+		B[i] = 2;
 	}
 	
 	cl_mem bufA, bufB, bufC;
-	bufA = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float)*4*4, NULL, &err);
-	bufB = clCreateBuffer(context, CL_MEM_READ_WRITE, sizeof(float)*4*4, NULL, &err);
+	bufA = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(int)*16884, NULL, &err);
+	bufB = clCreateBuffer(context, CL_MEM_READ_ONLY, sizeof(int)*16384, NULL, &err);
+	bufC = clCreateBuffer(context, CL_MEM_WRITE_ONLY, sizeof(int)*16384, NULL, &err);
 	CHECK_ERROR(err);
 
 
-	err = clEnqueueWriteBuffer(queue, bufA, CL_TRUE, 0, sizeof(float)*4*4,A,0,NULL,NULL);
+	err = clEnqueueWriteBuffer(queue, bufA, CL_FALSE, 0, sizeof(int)*16384,A,0,NULL,NULL);
 	CHECK_ERROR(err);
-	err = clEnqueueWriteBuffer(queue, bufB, CL_TRUE, 0, sizeof(float)*4*4,B,0,NULL,NULL);
+	err = clEnqueueWriteBuffer(queue, bufB, CL_FALSE, 0, sizeof(int)*16384,B,0,NULL,NULL);
 	CHECK_ERROR(err);
 
-	err = clEnqueueReadBuffer(queue, bufB, CL_TRUE,0,sizeof(float)*4*4,C,0,NULL,NULL);
+
+	/* Kerenl arg */
+	err = clSetKernelArg(kernel_vec_add, 0, sizeof(cl_mem), &bufA);
+	CHECK_ERROR(err);
+	err = clSetKernelArg(kernel_vec_add, 1, sizeof(cl_mem), &bufB);
+	CHECK_ERROR(err);
+	err = clSetKernelArg(kernel_vec_add, 2, sizeof(cl_mem), &bufC);
+	CHECK_ERROR(err);
+
+	/* Executing Kernel */
+	size_t global_size = 16384;
+	size_t local_size = 256;
+
+	err = clEnqueueNDRangeKernel(queue, kernel_vec_add, 1,NULL, &global_size,&local_size,0,NULL,NULL);
+	CHECK_ERROR(err);
+
+	/* Read Back from Device buffer */
+
+	err = clEnqueueReadBuffer(queue, bufC, CL_TRUE,0,sizeof(int)*16384,C,0,NULL,NULL);
 	CHECK_ERROR(err);
 	
-	
-	printf("Read Buffer : \n");
-	for(i=0; i<16; i++){
-		printf(" %f \n", C[i]);
+	int sum = 0;
+
+	for(i=0; i<16384; i++){
+		sum += C[i];
 	}
 
+	printf("Sum : %d\n",sum);
+
 
 	
-
-
-
 
 
 	/* Release Source */
+	clReleaseMemObject(bufA);
+	clReleaseMemObject(bufB);
+	clReleaseMemObject(bufC);
+	free(A);
+	free(B);
+	free(C);
 	clReleaseKernel(kernel_vec_add);
 	clReleaseProgram(program);
 	clReleaseCommandQueue(queue);
 	clReleaseContext(context);
-
-
-	
-
-	
-
-
-	
-
-
-
-
-
-
-
-	
-
-	
 
 }
